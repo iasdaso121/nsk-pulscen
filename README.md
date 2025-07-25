@@ -19,7 +19,9 @@ pip install -r requirements.txt
 Пример:
 
 ```bash
-python parse_product.py https://nsk.pulscen.ru/products/vstraivayemy_kompyuter_na_din_reyku_np_6111_l2_j6412_4g_ssd512g_271899908
+
+python parse_product.py https://nsk.pulscen.ru/products/vstraivayemy_kompyuter_na_din_reyku_np_6111_l2_j6412_4g_ssd512g_271899908 -v
+
 ```
 
 Результат выводится в формате JSON.

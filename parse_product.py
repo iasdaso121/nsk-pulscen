@@ -55,8 +55,19 @@ class Product:
 
 
 async def fetch_html(url: str) -> str:
+
+    """Download HTML from the given URL using proxy settings and browser headers."""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/116.0.0.0 Safari/537.36"
+        )
+    }
+
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
+
             logging.info("Fetching %s", url)
             async with session.get(url) as response:
                 response.raise_for_status()
@@ -68,14 +79,29 @@ async def fetch_html(url: str) -> str:
 
 
 def parse_attributes(soup: BeautifulSoup) -> List[Attribute]:
+
+    """Extract product attributes from the page."""
     result: List[Attribute] = []
-    for row in soup.select("table tr"):
-        cols = row.find_all("td")
+
+    # Modern layout uses div blocks
+    for item in soup.select('.product-description-list__item'):
+        label = item.select_one('.product-description-list__label')
+        value = item.select_one('.product-description-list__value')
+        name = label.get_text(strip=True) if label else None
+        val = value.get_text(" ", strip=True) if value else None
+        if name and val:
+            result.append(Attribute(attr_name=name, attr_value=val))
+
+    # Legacy table layout
+    for row in soup.select('table tr'):
+        cols = row.find_all('td')
         if len(cols) >= 2:
             name = cols[0].get_text(strip=True)
-            value = cols[1].get_text(strip=True)
+            val = cols[1].get_text(strip=True)
             if name:
-                result.append(Attribute(attr_name=name, attr_value=value))
+                result.append(Attribute(attr_name=name, attr_value=val))
+
+
     return result
 
 
