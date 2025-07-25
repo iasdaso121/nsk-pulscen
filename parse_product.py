@@ -55,6 +55,7 @@ class Product:
 
 
 async def fetch_html(url: str) -> str:
+
     """Download HTML from the given URL using proxy settings and browser headers."""
     headers = {
         "User-Agent": (
@@ -66,6 +67,7 @@ async def fetch_html(url: str) -> str:
 
     try:
         async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
+
             logging.info("Fetching %s", url)
             async with session.get(url) as response:
                 response.raise_for_status()
@@ -77,6 +79,7 @@ async def fetch_html(url: str) -> str:
 
 
 def parse_attributes(soup: BeautifulSoup) -> List[Attribute]:
+
     """Extract product attributes from the page."""
     result: List[Attribute] = []
 
@@ -97,6 +100,7 @@ def parse_attributes(soup: BeautifulSoup) -> List[Attribute]:
             val = cols[1].get_text(strip=True)
             if name:
                 result.append(Attribute(attr_name=name, attr_value=val))
+
 
     return result
 
