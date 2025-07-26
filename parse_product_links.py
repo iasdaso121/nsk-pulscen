@@ -40,6 +40,8 @@ def find_next_page(html: str, current_url: str) -> str | None:
 
 
 async def parse(url: str) -> List[dict]:
+    """Parse product links from a subcategory page."""
+
     page_num = 1
     results: List[ProductLink] = []
 

@@ -67,6 +67,7 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
 async def main(category_url: str, mongo_uri: str, out_file: str,
                link_concurrency: int = 5, product_concurrency: int = 10,
                debug_dir: str | None = None) -> None:
+    """Collect products from the given category and store them."""
     client = AsyncIOMotorClient(mongo_uri)
     db = client.pulscen
 
