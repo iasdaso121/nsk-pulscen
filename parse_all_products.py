@@ -5,8 +5,6 @@ import logging
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-import config
-
 import parse_categories
 import parse_product_links
 import parse_product
@@ -70,8 +68,6 @@ async def main(category_url: str, mongo_uri: str, out_file: str,
                link_concurrency: int = 5, product_concurrency: int = 10,
                debug_dir: str | None = None) -> None:
     """Collect products from the given category and store them."""
-
-    config.validate()
     client = AsyncIOMotorClient(mongo_uri)
     db = client.pulscen
 
@@ -92,7 +88,7 @@ if __name__ == "__main__":
     parser.add_argument("category_url", help="URL of the parent category")
     parser.add_argument("-o", "--out", default="products.json",
                         help="Path to output JSON file")
-    parser.add_argument("-m", "--mongodb", default=config.MONGODB_URI,
+    parser.add_argument("-m", "--mongodb", default="mongodb://localhost:27017",
                         help="MongoDB connection URI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     parser.add_argument("--link-concurrency", type=int, default=5,
