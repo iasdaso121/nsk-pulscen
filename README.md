@@ -35,3 +35,26 @@ python parse_categories.py https://nsk.pulscen.ru/price/computer -v
 ```
 
 Скрипт вернёт JSON-массив с названиями и ссылками на найденные подкатегории.
+
+### Сбор ссылок на товары
+
+Для получения всех ссылок на товары из выбранной подкатегории используйте
+скрипт `parse_product_links.py`:
+
+```bash
+python parse_product_links.py https://nsk.pulscen.ru/price/1901-nastolnye-kompjutery -v
+```
+
+Скрипт обходит все страницы подкатегории, учитывая пагинацию, и выводит
+JSON-массив с названием и URL каждого найденного товара.
+
+### Полный сбор товаров
+
+Чтобы собрать все товары из родительской категории, сохранить их в MongoDB и JSON‑файл, запустите `parse_all_products.py`:
+
+```bash
+python parse_all_products.py https://nsk.pulscen.ru/price/computer -v -o products.json
+```
+
+По умолчанию данные сохраняются в базу `pulscen` на `mongodb://localhost:27017` и в файл `products.json`.
+
