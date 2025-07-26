@@ -28,6 +28,7 @@ class SupplierOffer:
 class Supplier:
     dealer_id: Optional[str]
     supplier_name: Optional[str]
+    supplier_url: Optional[str]
     supplier_tel: Optional[str]
     supplier_address: Optional[str]
     supplier_description: Optional[str]
@@ -107,12 +108,14 @@ def parse_attributes(soup: BeautifulSoup) -> List[Attribute]:
 
 def parse_suppliers(soup: BeautifulSoup) -> List[Supplier]:
     suppliers: List[Supplier] = []
+
     for s in soup.select('.supplier'):
         dealer_id = s.get('data-dealer-id')
         name = s.select_one('.supplier__name')
         phone = s.select_one('.supplier__phone')
         address = s.select_one('.supplier__address')
         descr = s.select_one('.supplier__description')
+        url = name.get('href') if name else None
 
         offers: List[SupplierOffer] = []
         for offer_block in s.select('.supplier__offer'):
@@ -143,10 +146,25 @@ def parse_suppliers(soup: BeautifulSoup) -> List[Supplier]:
             Supplier(
                 dealer_id=dealer_id,
                 supplier_name=name.get_text(strip=True) if name else None,
+                supplier_url=url,
                 supplier_tel=phone.get_text(strip=True) if phone else None,
                 supplier_address=address.get_text(strip=True) if address else None,
                 supplier_description=descr.get_text(strip=True) if descr else None,
                 supplier_offers=offers,
+            )
+        )
+
+    # Additional supplier links found in compact info blocks
+    for link in soup.select('.product-company-info__name'):
+        suppliers.append(
+            Supplier(
+                dealer_id=None,
+                supplier_name=link.get_text(strip=True),
+                supplier_url=link.get('href'),
+                supplier_tel=None,
+                supplier_address=None,
+                supplier_description=None,
+                supplier_offers=[],
             )
         )
     return suppliers
