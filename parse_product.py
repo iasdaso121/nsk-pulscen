@@ -281,7 +281,20 @@ async def parse(url: str) -> dict:
     html = await fetch_html(url)
     product = parse_product(html)
     logging.info("Parsed product: %s", product.title)
-    return asdict(product)
+    def clean(obj):
+        if isinstance(obj, dict):
+            return {
+                k: clean(v)
+                for k, v in obj.items()
+                if v not in (None, [], {})
+            }
+        if isinstance(obj, list):
+            cleaned_list = [clean(item) for item in obj]
+            return [item for item in cleaned_list if item not in (None, [], {})]
+        return obj
+
+    raw = asdict(product)
+    return clean(raw)
 
 
 if __name__ == '__main__':
