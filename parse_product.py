@@ -259,8 +259,14 @@ def parse_product(html: str) -> Product:
     )
 
 
-async def parse(url: str) -> dict:
+async def parse(url: str, debug_html_path: str | None = None) -> dict:
     html = await fetch_html(url)
+    if debug_html_path:
+        try:
+            with open(debug_html_path, "w", encoding="utf-8") as fh:
+                fh.write(html)
+        except OSError as exc:
+            logging.warning("Failed to save HTML to %s: %s", debug_html_path, exc)
     product = parse_product(html)
     logging.info("Parsed product: %s", product.title)
     def clean(obj):
@@ -285,10 +291,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parse a product page from nsk.pulscen.ru')
     parser.add_argument('url', help='URL of the product page')
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--save-html', help='Path to save raw HTML of the product page')
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format='%(levelname)s:%(message)s')
 
-    data = asyncio.run(parse(args.url))
+    data = asyncio.run(parse(args.url, debug_html_path=args.save_html))
     print(json.dumps(data, ensure_ascii=False, indent=2))
