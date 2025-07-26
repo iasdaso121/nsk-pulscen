@@ -29,23 +29,32 @@ async def gather_product_links(category_url: str, concurrency: int = 5) -> list[
     return all_links
 
 
-async def gather_products(db, urls: list[str], concurrency: int = 10) -> list[dict]:
-    """Parse product pages and store them in MongoDB."""
+async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10) -> None:
+    """Parse product pages and store them in MongoDB and JSON file on the fly."""
     sem = asyncio.Semaphore(concurrency)
-    results: list[dict] = []
+    write_lock = asyncio.Lock()
+    first = True
 
     async def parse_and_store(url: str) -> None:
+        nonlocal first
         async with sem:
             try:
                 product = await parse_product.parse(url)
                 await db.products.insert_one(product)
-                results.append(product)
+                data = json.dumps(product, ensure_ascii=False, default=str)
+                async with write_lock:
+                    if first:
+                        out_fh.write('[' + data)
+                        first = False
+                    else:
+                        out_fh.write(',\n' + data)
                 logging.info("Stored product %s", product.get("title"))
             except Exception as exc:
                 logging.error("Failed to parse %s: %s", url, exc)
 
     await asyncio.gather(*(parse_and_store(u) for u in urls))
-    return results
+    # finalize JSON array
+    out_fh.write(']\n')
 
 
 async def main(category_url: str, mongo_uri: str, out_file: str,
@@ -56,9 +65,8 @@ async def main(category_url: str, mongo_uri: str, out_file: str,
     links = await gather_product_links(category_url, concurrency=link_concurrency)
     logging.info("Collected %s product links", len(links))
 
-    products = await gather_products(db, links, concurrency=product_concurrency)
     with open(out_file, "w") as fh:
-        json.dump(products, fh, ensure_ascii=False, indent=2, default=str)
+        await gather_products(db, links, out_fh=fh, concurrency=product_concurrency)
 
     # AsyncIOMotorClient.close() is a regular method and doesn't return a
     # coroutine, so calling it via "await" results in a TypeError. Simply

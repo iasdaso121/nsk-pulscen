@@ -5,8 +5,9 @@ from dataclasses import dataclass, asdict
 from typing import List
 from urllib.parse import urljoin
 
-import aiohttp
 from bs4 import BeautifulSoup
+
+from utils import fetch_html_with_retries
 
 
 @dataclass
@@ -16,19 +17,8 @@ class Subcategory:
 
 
 async def fetch_html(url: str) -> str:
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/116.0.0.0 Safari/537.36"
-        )
-    }
-    async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
-        logging.info("Fetching %s", url)
-        async with session.get(url) as response:
-            response.raise_for_status()
-            logging.info("Received HTTP %s", response.status)
-            return await response.text()
+    html, _ = await fetch_html_with_retries(url)
+    return html
 
 
 def parse_subcategories(html: str, base_url: str) -> List[Subcategory]:
