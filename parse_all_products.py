@@ -29,17 +29,24 @@ async def gather_product_links(category_url: str, concurrency: int = 5) -> list[
     return all_links
 
 
-async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10) -> None:
+async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, debug_dir: str | None = None) -> None:
     """Parse product pages and store them in MongoDB and JSON file on the fly."""
     sem = asyncio.Semaphore(concurrency)
     write_lock = asyncio.Lock()
     first = True
+    html_saved = False
 
     async def parse_and_store(url: str) -> None:
-        nonlocal first
+        nonlocal first, html_saved
         async with sem:
             try:
-                product = await parse_product.parse(url)
+                debug_path = None
+                if debug_dir and not html_saved:
+                    import os
+                    os.makedirs(debug_dir, exist_ok=True)
+                    debug_path = os.path.join(debug_dir, "sample.html")
+                    html_saved = True
+                product = await parse_product.parse(url, debug_html_path=debug_path)
                 await db.products.insert_one(product)
                 data = json.dumps(product, ensure_ascii=False, default=str)
                 async with write_lock:
@@ -58,7 +65,8 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10) ->
 
 
 async def main(category_url: str, mongo_uri: str, out_file: str,
-               link_concurrency: int = 5, product_concurrency: int = 10) -> None:
+               link_concurrency: int = 5, product_concurrency: int = 10,
+               debug_dir: str | None = None) -> None:
     client = AsyncIOMotorClient(mongo_uri)
     db = client.pulscen
 
@@ -66,7 +74,7 @@ async def main(category_url: str, mongo_uri: str, out_file: str,
     logging.info("Collected %s product links", len(links))
 
     with open(out_file, "w") as fh:
-        await gather_products(db, links, out_fh=fh, concurrency=product_concurrency)
+        await gather_products(db, links, out_fh=fh, concurrency=product_concurrency, debug_dir=debug_dir)
 
     # AsyncIOMotorClient.close() is a regular method and doesn't return a
     # coroutine, so calling it via "await" results in a TypeError. Simply
@@ -86,6 +94,7 @@ if __name__ == "__main__":
                         help="Number of concurrent subcategory parsers")
     parser.add_argument("--product-concurrency", type=int, default=10,
                         help="Number of concurrent product fetchers")
+    parser.add_argument("--debug-dir", help="Directory to save raw HTML samples")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
@@ -93,4 +102,5 @@ if __name__ == "__main__":
 
     asyncio.run(main(args.category_url, args.mongodb, args.out,
                      link_concurrency=args.link_concurrency,
-                     product_concurrency=args.product_concurrency))
+                     product_concurrency=args.product_concurrency,
+                     debug_dir=args.debug_dir))
