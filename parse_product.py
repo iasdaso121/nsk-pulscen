@@ -260,6 +260,21 @@ def parse_product(html: str) -> Product:
 
 
 async def parse(url: str, debug_html_path: str | None = None) -> dict:
+    """Fetch and parse a product page.
+
+    Parameters
+    ----------
+    url: str
+        URL страницы товара.
+    debug_html_path: str | None
+        Если путь указан, HTML будет сохранён в этот файл для отладки.
+
+    Returns
+    -------
+    dict
+        Словарь с данными о товаре в соответствии со схемой JSON.
+    """
+
     html = await fetch_html(url)
     if debug_html_path:
         try:

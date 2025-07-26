@@ -32,6 +32,8 @@ def parse_subcategories(html: str, base_url: str) -> List[Subcategory]:
 
 
 async def parse(url: str) -> List[dict]:
+    """Parse subcategories from the given category page URL."""
+
     html = await fetch_html(url)
     subcats = parse_subcategories(html, url)
     logging.info("Found %s subcategories", len(subcats))

@@ -3,8 +3,9 @@ import logging
 import re
 from typing import Tuple
 
-import aiohttp
+import httpx
 from Crypto.Cipher import AES
+from fake_useragent import UserAgent
 
 # Substrings that may indicate the site blocked us.
 # The generic word "captcha" was previously used but it also appears in
@@ -38,24 +39,23 @@ def _solve_rbpcs_cookie(html: str) -> str | None:
 
 
 async def _fetch_with_session(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     url: str,
     *,
     allow_redirects: bool,
 ) -> Tuple[str, str]:
-    async with session.get(url, allow_redirects=allow_redirects) as response:
-        response.raise_for_status()
-        html = await response.text()
-        final_url = str(response.url)
+    response = await session.get(url, follow_redirects=allow_redirects)
+    response.raise_for_status()
+    html = response.text
+    final_url = str(response.url)
 
     cookie = _solve_rbpcs_cookie(html)
     if cookie:
-        from yarl import URL
-        session.cookie_jar.update_cookies({"RBPCS": cookie}, response_url=URL(url))
-        async with session.get(url, allow_redirects=allow_redirects) as response:
-            response.raise_for_status()
-            html = await response.text()
-            final_url = str(response.url)
+        session.cookies.set("RBPCS", cookie)
+        response = await session.get(url, follow_redirects=allow_redirects)
+        response.raise_for_status()
+        html = response.text
+        final_url = str(response.url)
 
     lowered = html.lower()
     if any(pattern in lowered for pattern in BLOCK_PATTERNS):
@@ -71,22 +71,20 @@ async def fetch_html_with_retries(
     retries: int = 3,
 ) -> Tuple[str, str]:
     """Fetch a URL with retries and basic spam-block detection."""
+    ua = UserAgent()
+
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/116.0.0.0 Safari/537.36"
-        )
+        "User-Agent": ua.random,
     }
 
     for attempt in range(1, retries + 1):
         try:
-            async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
+            async with httpx.AsyncClient(headers=headers, trust_env=True) as session:
                 logging.info("Fetching %s (attempt %s)", url, attempt)
                 return await _fetch_with_session(
                     session, url, allow_redirects=allow_redirects
                 )
-        except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError) as exc:
+        except (httpx.HTTPError, asyncio.TimeoutError, RuntimeError) as exc:
             logging.warning(
                 "Error fetching %s on attempt %s/%s: %s",
                 url,
