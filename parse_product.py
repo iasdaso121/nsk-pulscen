@@ -4,8 +4,9 @@ import logging
 from dataclasses import dataclass, asdict
 from typing import List, Optional
 
-import aiohttp
 from bs4 import BeautifulSoup
+
+from utils import fetch_html_with_retries
 
 
 @dataclass
@@ -56,27 +57,8 @@ class Product:
 
 
 async def fetch_html(url: str) -> str:
-
-    """Download HTML from the given URL using proxy settings and browser headers."""
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/116.0.0.0 Safari/537.36"
-        )
-    }
-
-    try:
-        async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
-
-            logging.info("Fetching %s", url)
-            async with session.get(url) as response:
-                response.raise_for_status()
-                logging.info("Received HTTP %s", response.status)
-                return await response.text()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-        logging.error("Network error while requesting %s: %s", url, exc)
-        raise
+    html, _ = await fetch_html_with_retries(url)
+    return html
 
 
 def parse_attributes(soup: BeautifulSoup) -> List[Attribute]:

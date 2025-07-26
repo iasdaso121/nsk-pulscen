@@ -5,8 +5,9 @@ from dataclasses import dataclass, asdict
 from typing import List
 from urllib.parse import urljoin
 
-import aiohttp
 from bs4 import BeautifulSoup
+
+from utils import fetch_html_with_retries
 
 
 @dataclass
@@ -16,23 +17,7 @@ class ProductLink:
 
 
 async def fetch_html(url: str) -> tuple[str, str]:
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/116.0.0.0 Safari/537.36"
-        )
-    }
-    async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
-        logging.info("Fetching %s", url)
-        async with session.get(url, allow_redirects=True) as response:
-            response.raise_for_status()
-            final_url = str(response.url)
-            logging.info(
-                "Received HTTP %s (final URL %s)", response.status, final_url
-            )
-            html = await response.text()
-            return html, final_url
+    return await fetch_html_with_retries(url, allow_redirects=True)
 
 
 def parse_links(html: str, base_url: str) -> List[ProductLink]:
