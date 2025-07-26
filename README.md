@@ -25,3 +25,13 @@ python parse_product.py https://nsk.pulscen.ru/products/vstraivayemy_kompyuter_n
 ```
 
 Результат выводится в формате JSON.
+
+### Сбор подкатегорий
+
+Для получения списка подкатегорий со страницы родительской категории используйте скрипт `parse_categories.py`:
+
+```bash
+python parse_categories.py https://nsk.pulscen.ru/price/computer -v
+```
+
+Скрипт вернёт JSON-массив с названиями и ссылками на найденные подкатегории.
