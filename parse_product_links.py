@@ -70,6 +70,9 @@ async def parse(url: str) -> List[dict]:
 
         links = parse_links(html, url)
         logging.info("Found %s products on %s", len(links), final_url)
+        if not links:
+            logging.info("No products found, stopping at %s", final_url)
+            break
         results.extend(links)
 
         page_num += 1
