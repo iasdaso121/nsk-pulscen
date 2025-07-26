@@ -180,11 +180,19 @@ def parse_product(html: str) -> Product:
             brand = value.get_text(strip=True) if value else None
             break
     if brand is None:
-        brand_tag = soup.find(string=lambda x: x and 'Бренд' in x)
+
+        brand_tag = soup.find(string=lambda x: x and ('Бренд' in x or 'Производитель' in x))
+
         if brand_tag:
             parent = brand_tag.parent
             if parent.name == 'td' and parent.find_next('td'):
                 brand = parent.find_next('td').get_text(strip=True)
+
+            else:
+                next_text = parent.next_sibling
+                if next_text:
+                    brand = str(next_text).strip()
+
 
     country = None
     country_tag = soup.find(string=lambda x: x and 'Страна происхождения' in x)
@@ -194,11 +202,22 @@ def parse_product(html: str) -> Product:
             country = parent.find_next('td').get_text(strip=True)
 
     warranty = None
-    w_tag = soup.find(string=lambda x: x and 'Гарантийный срок' in x)
-    if w_tag:
-        parent = w_tag.parent
-        if parent.name == 'td' and parent.find_next('td'):
-            warranty = parent.find_next('td').get_text(strip=True)
+    for item in soup.select('.product-description-list__item'):
+        label = item.select_one('.product-description-list__label')
+        value = item.select_one('.product-description-list__value')
+        if label and 'Гарантийный срок' in label.get_text(strip=True):
+            warranty = value.get_text(strip=True) if value else None
+            break
+    if warranty is None:
+        w_tag = soup.find(string=lambda x: x and 'Гарантийный срок' in x)
+        if w_tag:
+            parent = w_tag.parent
+            if parent.name == 'td' and parent.find_next('td'):
+                warranty = parent.find_next('td').get_text(strip=True)
+            else:
+                next_text = parent.next_sibling
+                if next_text:
+                    warranty = str(next_text).strip()
 
     category = None
     breadcrumb_items = soup.select('.aui-breadcrumbs__item.js-breadcrumb')
