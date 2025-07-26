@@ -73,7 +73,7 @@ async def main(category_url: str, mongo_uri: str, out_file: str,
     links = await gather_product_links(category_url, concurrency=link_concurrency)
     logging.info("Collected %s product links", len(links))
 
-    with open(out_file, "w") as fh:
+    with open(out_file, "w", encoding="utf-8") as fh:
         await gather_products(db, links, out_fh=fh, concurrency=product_concurrency, debug_dir=debug_dir)
 
     # AsyncIOMotorClient.close() is a regular method and doesn't return a
