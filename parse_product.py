@@ -180,15 +180,19 @@ def parse_product(html: str) -> Product:
             brand = value.get_text(strip=True) if value else None
             break
     if brand is None:
+
         brand_tag = soup.find(string=lambda x: x and ('Бренд' in x or 'Производитель' in x))
+
         if brand_tag:
             parent = brand_tag.parent
             if parent.name == 'td' and parent.find_next('td'):
                 brand = parent.find_next('td').get_text(strip=True)
+
             else:
                 next_text = parent.next_sibling
                 if next_text:
                     brand = str(next_text).strip()
+
 
     country = None
     country_tag = soup.find(string=lambda x: x and 'Страна происхождения' in x)
