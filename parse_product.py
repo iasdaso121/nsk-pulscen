@@ -162,18 +162,29 @@ def parse_product(html: str) -> Product:
     description = descr_tag.get_text("\n", strip=True) if descr_tag else None
 
     article = None
-    article_tag = soup.find(string=lambda x: x and 'Артикул' in x)
-    if article_tag:
-        parent = article_tag.parent
-        if parent.name == 'td' and parent.find_next('td'):
-            article = parent.find_next('td').get_text(strip=True)
+    art_tag = soup.select_one('.product-description-list__article-value')
+    if art_tag:
+        article = art_tag.get_text(strip=True)
+    else:
+        article_tag = soup.find(string=lambda x: x and 'Артикул' in x)
+        if article_tag:
+            parent = article_tag.parent
+            if parent.name == 'td' and parent.find_next('td'):
+                article = parent.find_next('td').get_text(strip=True)
 
     brand = None
-    brand_tag = soup.find(string=lambda x: x and 'Бренд' in x)
-    if brand_tag:
-        parent = brand_tag.parent
-        if parent.name == 'td' and parent.find_next('td'):
-            brand = parent.find_next('td').get_text(strip=True)
+    for item in soup.select('.product-description-list__item'):
+        label = item.select_one('.product-description-list__label')
+        value = item.select_one('.product-description-list__value')
+        if label and 'Производитель' in label.get_text(strip=True):
+            brand = value.get_text(strip=True) if value else None
+            break
+    if brand is None:
+        brand_tag = soup.find(string=lambda x: x and 'Бренд' in x)
+        if brand_tag:
+            parent = brand_tag.parent
+            if parent.name == 'td' and parent.find_next('td'):
+                brand = parent.find_next('td').get_text(strip=True)
 
     country = None
     country_tag = soup.find(string=lambda x: x and 'Страна происхождения' in x)
@@ -190,9 +201,15 @@ def parse_product(html: str) -> Product:
             warranty = parent.find_next('td').get_text(strip=True)
 
     category = None
-    cat_tag = soup.select_one('.breadcrumbs li:last-child')
-    if cat_tag:
-        category = cat_tag.get_text(strip=True)
+    breadcrumb_items = soup.select('.aui-breadcrumbs__item.js-breadcrumb')
+    if breadcrumb_items:
+        last = breadcrumb_items[-1]
+        name_tag = last.select_one('[itemprop=name]') or last
+        category = name_tag.get_text(strip=True)
+    else:
+        cat_tag = soup.select_one('.breadcrumbs li:last-child')
+        if cat_tag:
+            category = cat_tag.get_text(strip=True)
 
     created_at = None
     created_tag = soup.find(string=lambda x: x and 'размещено' in x.lower())
