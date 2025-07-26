@@ -15,7 +15,7 @@ class ProductLink:
     url: str
 
 
-async def fetch_html(url: str) -> str:
+async def fetch_html(url: str) -> tuple[str, str]:
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -25,10 +25,14 @@ async def fetch_html(url: str) -> str:
     }
     async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
         logging.info("Fetching %s", url)
-        async with session.get(url) as response:
+        async with session.get(url, allow_redirects=True) as response:
             response.raise_for_status()
-            logging.info("Received HTTP %s", response.status)
-            return await response.text()
+            final_url = str(response.url)
+            logging.info(
+                "Received HTTP %s (final URL %s)", response.status, final_url
+            )
+            html = await response.text()
+            return html, final_url
 
 
 def parse_links(html: str, base_url: str) -> List[ProductLink]:
@@ -51,20 +55,24 @@ def find_next_page(html: str, current_url: str) -> str | None:
 
 
 async def parse(url: str) -> List[dict]:
-    page_url = url
+    page_num = 1
     results: List[ProductLink] = []
 
-    while page_url:
-        html = await fetch_html(page_url)
+    while True:
+        page_url = url if page_num == 1 else f"{url}?page={page_num}"
+        html, final_url = await fetch_html(page_url)
+
+        # If we requested a page beyond the last one, the server will redirect
+        # to the base URL without the pagination parameter. In this case we
+        # stop without parsing the duplicated first page.
+        if page_num > 1 and "?page=" not in final_url:
+            break
+
         links = parse_links(html, url)
-        logging.info("Found %s products on %s", len(links), page_url)
+        logging.info("Found %s products on %s", len(links), final_url)
         results.extend(links)
 
-        next_page = find_next_page(html, page_url)
-        if next_page and next_page != page_url:
-            page_url = next_page
-        else:
-            break
+        page_num += 1
 
     return [asdict(link) for link in results]
 
