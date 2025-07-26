@@ -58,7 +58,7 @@ async def main(category_url: str, mongo_uri: str, out_file: str,
 
     products = await gather_products(db, links, concurrency=product_concurrency)
     with open(out_file, "w") as fh:
-        json.dump(products, fh, ensure_ascii=False, indent=2)
+        json.dump(products, fh, ensure_ascii=False, indent=2, default=str)
 
     # AsyncIOMotorClient.close() is a regular method and doesn't return a
     # coroutine, so calling it via "await" results in a TypeError. Simply
