@@ -50,7 +50,8 @@ async def _fetch_with_session(
 
     cookie = _solve_rbpcs_cookie(html)
     if cookie:
-        session.cookie_jar.update_cookies({"RBPCS": cookie}, response_url=url)
+        from yarl import URL
+        session.cookie_jar.update_cookies({"RBPCS": cookie}, response_url=URL(url))
         async with session.get(url, allow_redirects=allow_redirects) as response:
             response.raise_for_status()
             html = await response.text()
