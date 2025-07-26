@@ -4,8 +4,16 @@ from typing import Tuple
 
 import aiohttp
 
-# Simple keywords that might indicate the site blocked us with a captcha
-BLOCK_PATTERNS = ["captcha", "робот", "доступ ограничен"]
+# Substrings that may indicate the site blocked us.
+# The generic word "captcha" was previously used but it also appears in
+# legitimate page markup (e.g. "SmartCaptcha" footer) causing false
+# positives. We now rely on more specific phrases likely present on a
+# block page.
+BLOCK_PATTERNS = [
+    "не робот",
+    "доступ ограничен",
+    "слишком много запросов",
+]
 
 async def fetch_html_with_retries(url: str, *, allow_redirects: bool = True, retries: int = 3) -> Tuple[str, str]:
     """Fetch a URL with retries and basic spam-block detection."""
