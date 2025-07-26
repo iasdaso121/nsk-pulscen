@@ -155,12 +155,19 @@ def parse_suppliers(soup: BeautifulSoup) -> List[Supplier]:
         )
 
     # Additional supplier links found in compact info blocks
-    for link in soup.select('.product-company-info__name'):
+    for container in soup.select('.product-company-info__name'):
+        anchor = container.select_one('a.aui-link')
+        if anchor:
+            name = anchor.get_text(strip=True)
+            href = anchor.get('href')
+        else:
+            name = container.get_text(strip=True)
+            href = container.get('href')
         suppliers.append(
             Supplier(
                 dealer_id=None,
-                supplier_name=link.get_text(strip=True),
-                supplier_url=link.get('href'),
+                supplier_name=name,
+                supplier_url=href,
                 supplier_tel=None,
                 supplier_address=None,
                 supplier_description=None,
