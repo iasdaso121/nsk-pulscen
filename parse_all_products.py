@@ -60,7 +60,10 @@ async def main(category_url: str, mongo_uri: str, out_file: str,
     with open(out_file, "w") as fh:
         json.dump(products, fh, ensure_ascii=False, indent=2)
 
-    await client.close()
+    # AsyncIOMotorClient.close() is a regular method and doesn't return a
+    # coroutine, so calling it via "await" results in a TypeError. Simply
+    # invoke the method without awaiting to properly close the connection.
+    client.close()
 
 
 if __name__ == "__main__":
