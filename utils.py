@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import re
+from playwright.async_api import async_playwright
+
 from typing import Tuple
 
 import aiohttp
@@ -37,31 +39,28 @@ def _solve_rbpcs_cookie(html: str) -> str | None:
         return None
 
 
-async def _fetch_with_session(
-    session: aiohttp.ClientSession,
+async def _fetch_with_playwright(
     url: str,
     *,
-    allow_redirects: bool,
+    allow_redirects: bool = True,  # сейчас не используем, тк браузер сам делает редиректы
 ) -> Tuple[str, str]:
-    async with session.get(url, allow_redirects=allow_redirects) as response:
-        response.raise_for_status()
-        html = await response.text()
-        final_url = str(response.url)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-    cookie = _solve_rbpcs_cookie(html)
-    if cookie:
-        from yarl import URL
-        session.cookie_jar.update_cookies({"RBPCS": cookie}, response_url=URL(url))
-        async with session.get(url, allow_redirects=allow_redirects) as response:
-            response.raise_for_status()
-            html = await response.text()
-            final_url = str(response.url)
+        response = await page.goto(url, wait_until="networkidle")
 
-    lowered = html.lower()
-    if any(pattern in lowered for pattern in BLOCK_PATTERNS):
-        raise RuntimeError("Blocked or captcha detected")
+        html = await page.content()
+        final_url = page.url
 
-    return html, final_url
+        lowered = html.lower()
+        if any(pattern in lowered for pattern in BLOCK_PATTERNS):
+            await browser.close()
+            raise RuntimeError("Blocked or captcha detected")
+
+        await browser.close()
+        return html, final_url
 
 
 async def fetch_html_with_retries(
@@ -70,23 +69,20 @@ async def fetch_html_with_retries(
     allow_redirects: bool = True,
     retries: int = 3,
 ) -> Tuple[str, str]:
-    """Fetch a URL with retries and basic spam-block detection."""
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/116.0.0.0 Safari/537.36"
-        )
-    }
-
     for attempt in range(1, retries + 1):
         try:
-            async with aiohttp.ClientSession(headers=headers, trust_env=True) as session:
-                logging.info("Fetching %s (attempt %s)", url, attempt)
-                return await _fetch_with_session(
-                    session, url, allow_redirects=allow_redirects
-                )
-        except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError) as exc:
+            logging.info("Fetching %s (attempt %s)", url, attempt)
+            return await _fetch_with_playwright(url, allow_redirects=allow_redirects)
+        except RuntimeError as exc:
+            logging.warning(
+                "Blocked or captcha detected on attempt %s/%s: %s",
+                attempt,
+                retries,
+                exc,
+            )
+            if attempt == retries:
+                raise
+        except Exception as exc:
             logging.warning(
                 "Error fetching %s on attempt %s/%s: %s",
                 url,
@@ -96,5 +92,4 @@ async def fetch_html_with_retries(
             )
             if attempt == retries:
                 raise
-            await asyncio.sleep(2 * attempt)
-
+        await asyncio.sleep(2 * attempt)
