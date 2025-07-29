@@ -259,45 +259,34 @@ def parse_product(html: str) -> Product:
     )
 
 
+
 async def parse(url: str, debug_html_path: str | None = None) -> dict:
-    """Fetch and parse a product page.
-
-    Parameters
-    ----------
-    url: str
-        URL страницы товара.
-    debug_html_path: str | None
-        Если путь указан, HTML будет сохранён в этот файл для отладки.
-
-    Returns
-    -------
-    dict
-        Словарь с данными о товаре в соответствии со схемой JSON.
-    """
-
+    """Fetch and parse a product page."""
     html = await fetch_html(url)
+
     if debug_html_path:
         try:
             with open(debug_html_path, "w", encoding="utf-8") as fh:
                 fh.write(html)
         except OSError as exc:
             logging.warning("Failed to save HTML to %s: %s", debug_html_path, exc)
+
     product = parse_product(html)
     logging.info("Parsed product: %s", product.title)
-    def clean(obj):
-        if isinstance(obj, dict):
-            return {
-                k: clean(v)
-                for k, v in obj.items()
-                if v not in (None, [], {})
-            }
-        if isinstance(obj, list):
-            cleaned_list = [clean(item) for item in obj]
-            return [item for item in cleaned_list if item not in (None, [], {})]
-        return obj
 
     raw = asdict(product)
-    return clean(raw)
+
+    def fill_defaults(obj):
+        """Заменяет None, пустые строки, списки, словари на 'Нет значения'."""
+        if isinstance(obj, dict):
+            return {k: fill_defaults(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [fill_defaults(i) for i in obj] if obj else "Нет значения"
+        elif obj in (None, "", {}, []):
+            return "Нет значения"
+        return obj
+
+    return fill_defaults(raw)
 
 
 if __name__ == '__main__':
