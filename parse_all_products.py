@@ -4,6 +4,17 @@ import json
 import logging
 
 from motor.motor_asyncio import AsyncIOMotorClient
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def open_mongo(uri: str):
+    """Async context manager for AsyncIOMotorClient."""
+    client = AsyncIOMotorClient(uri)
+    try:
+        yield client
+    finally:
+        client.close()
 
 import parse_categories
 import parse_product_links
@@ -30,64 +41,60 @@ async def gather_product_links(category_url: str, concurrency: int = 5) -> list[
 
 
 async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, debug_dir: str | None = None) -> None:
-    """Parse product pages and store them in MongoDB and JSON file on the fly."""
+    """Parse product pages and store them in MongoDB and JSONL file on the fly."""
     sem = asyncio.Semaphore(concurrency)
     write_lock = asyncio.Lock()
-    first = True
     html_saved = False
 
     async def parse_and_store(url: str) -> None:
-        nonlocal first, html_saved
+        nonlocal html_saved
         async with sem:
+            debug_path = None
+            if debug_dir and not html_saved:
+                import os
+                os.makedirs(debug_dir, exist_ok=True)
+                debug_path = os.path.join(debug_dir, "sample.html")
+                html_saved = True
+
             try:
-                debug_path = None
-                if debug_dir and not html_saved:
-                    import os
-                    os.makedirs(debug_dir, exist_ok=True)
-                    debug_path = os.path.join(debug_dir, "sample.html")
-                    html_saved = True
                 product = await parse_product.parse(url, debug_html_path=debug_path)
+            except Exception as exc:  # noqa: BLE001
+                logging.exception("Failed to parse %s: %s", url, exc)
+                return
+
+            try:
                 await db.products.insert_one(product)
-                data = json.dumps(product, ensure_ascii=False, default=str)
-                async with write_lock:
-                    if first:
-                        out_fh.write('[' + data)
-                        first = False
-                    else:
-                        out_fh.write(',\n' + data)
-                logging.info("Stored product %s", product.get("title"))
-            except Exception as exc:
-                logging.error("Failed to parse %s: %s", url, exc)
+            except Exception as exc:  # noqa: BLE001
+                logging.exception("Failed to store product %s: %s", url, exc)
+                return
+
+            data = json.dumps(product, ensure_ascii=False, default=str)
+            async with write_lock:
+                out_fh.write(data + "\n")
+            logging.info("Stored product %s", product.get("title"))
 
     await asyncio.gather(*(parse_and_store(u) for u in urls))
-    # finalize JSON array
-    out_fh.write(']\n')
 
 
 async def main(category_url: str, mongo_uri: str, out_file: str,
                link_concurrency: int = 5, product_concurrency: int = 10,
                debug_dir: str | None = None) -> None:
     """Collect products from the given category and store them."""
-    client = AsyncIOMotorClient(mongo_uri)
-    db = client.pulscen
+    async with open_mongo(mongo_uri) as client:
+        db = client.pulscen
 
-    links = await gather_product_links(category_url, concurrency=link_concurrency)
-    logging.info("Collected %s product links", len(links))
+        links = await gather_product_links(category_url, concurrency=link_concurrency)
+        logging.info("Collected %s product links", len(links))
 
-    with open(out_file, "w", encoding="utf-8") as fh:
-        await gather_products(db, links, out_fh=fh, concurrency=product_concurrency, debug_dir=debug_dir)
-
-    # AsyncIOMotorClient.close() is a regular method and doesn't return a
-    # coroutine, so calling it via "await" results in a TypeError. Simply
-    # invoke the method without awaiting to properly close the connection.
-    client.close()
+        with open(out_file, "w", encoding="utf-8") as fh:
+            await gather_products(db, links, out_fh=fh, concurrency=product_concurrency, debug_dir=debug_dir)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parse all products from a Pulscen category")
     parser.add_argument("category_url", help="URL of the parent category")
-    parser.add_argument("-o", "--out", default="products.json",
-                        help="Path to output JSON file")
+    parser.add_argument("-o", "--out", default="products.jsonl",
+                        help="Path to output JSONL file")
     parser.add_argument("-m", "--mongodb", default="mongodb://localhost:27017",
                         help="MongoDB connection URI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
@@ -98,8 +105,10 @@ if __name__ == "__main__":
     parser.add_argument("--debug-dir", help="Directory to save raw HTML samples")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
-                        format="%(levelname)s:%(message)s")
+    logging.basicConfig(
+        level=logging.INFO if args.verbose else logging.WARNING,
+        format="%(asctime)s %(levelname)s:%(message)s",
+    )
 
     asyncio.run(main(args.category_url, args.mongodb, args.out,
                      link_concurrency=args.link_concurrency,

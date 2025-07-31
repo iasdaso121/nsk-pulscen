@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
-        format="%(levelname)s:%(message)s",
+        format="%(asctime)s %(levelname)s:%(message)s",
     )
 
     data = asyncio.run(parse(args.url))
