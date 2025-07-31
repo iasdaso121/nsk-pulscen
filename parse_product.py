@@ -12,6 +12,7 @@ from errors import ParseError
 
 
 
+
 async def fetch_html(url: str) -> str:
     html, _ = await fetch_html_with_retries(url)
     return html

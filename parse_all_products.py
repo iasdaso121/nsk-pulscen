@@ -73,6 +73,7 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
                 )
             except PyMongoError as exc:
                 logging.exception("Database error for %s: %s", url, exc)
+
                 return
 
             data = json.dumps(product, ensure_ascii=False, default=str)

@@ -9,7 +9,6 @@ from Crypto.Cipher import AES
 from contextlib import contextmanager
 import os
 import tempfile
-
 from errors import FetchError
 
 # Substrings that may indicate the site blocked us.
