@@ -5,8 +5,10 @@ from playwright.async_api import async_playwright
 
 from typing import Tuple
 
-import aiohttp
 from Crypto.Cipher import AES
+from contextlib import contextmanager
+import os
+import tempfile
 
 # Substrings that may indicate the site blocked us.
 # The generic word "captcha" was previously used but it also appears in
@@ -93,3 +95,20 @@ async def fetch_html_with_retries(
             if attempt == retries:
                 raise
         await asyncio.sleep(2 * attempt)
+
+
+@contextmanager
+def atomic_writer(path: str):
+    """Write to a temporary file and move it into place when done."""
+    directory = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=directory)
+    os.close(fd)
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            yield fh
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except FileNotFoundError:
+            pass
