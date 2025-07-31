@@ -50,11 +50,11 @@ JSON-массив с названием и URL каждого найденног
 
 ### Полный сбор товаров
 
-Чтобы собрать все товары из родительской категории, сохранить их в MongoDB и JSON‑файл, запустите `parse_all_products.py`:
+Чтобы собрать все товары из родительской категории, сохранить их в MongoDB и JSONL‑файл, запустите `parse_all_products.py`:
 
 ```bash
-python parse_all_products.py https://nsk.pulscen.ru/price/computer -v -o products.json
+python parse_all_products.py https://nsk.pulscen.ru/price/computer -v -o products.jsonl
 ```
 
-По умолчанию данные сохраняются в базу `pulscen` на `mongodb://localhost:27017` и в файл `products.json`.
+По умолчанию данные сохраняются в базу `pulscen` на `mongodb://localhost:27017` и в файл `products.jsonl`.
 

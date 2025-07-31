@@ -168,6 +168,9 @@ def parse_product(html: str) -> Product:
     descr_tag = soup.select_one('.product-description')
     description = descr_tag.get_text("\n", strip=True) if descr_tag else None
 
+    if not any([title, description]):
+        raise ValueError("Empty product page")
+
     article = None
     art_tag = soup.select_one('.product-description-list__article-value')
     if art_tag:
@@ -298,8 +301,10 @@ if __name__ == '__main__':
     parser.add_argument('--save-html', help='Path to save raw HTML of the product page')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
-                        format='%(levelname)s:%(message)s')
+    logging.basicConfig(
+        level=logging.INFO if args.verbose else logging.WARNING,
+        format='%(asctime)s %(levelname)s:%(message)s',
+    )
 
     data = asyncio.run(parse(args.url, debug_html_path=args.save_html))
     print(json.dumps(data, ensure_ascii=False, indent=2))
