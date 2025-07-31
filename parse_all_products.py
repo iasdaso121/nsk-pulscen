@@ -6,6 +6,7 @@ from typing import Iterable
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
+from pymongo.errors import PyMongoError
 
 
 @asynccontextmanager
@@ -21,6 +22,7 @@ import parse_categories
 import parse_product_links
 import parse_product
 from utils import atomic_writer
+from errors import FetchError, ParseError
 
 
 async def gather_product_links(category_url: str) -> list[str]:
@@ -56,8 +58,11 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
 
             try:
                 product = await parse_product.parse(url, debug_html_path=debug_path)
-            except Exception as exc:  # noqa: BLE001
-                logging.exception("Failed to parse %s: %s", url, exc)
+            except FetchError as exc:
+                logging.error("Network error for %s: %s", url, exc)
+                return
+            except ParseError as exc:
+                logging.warning("Parse error for %s: %s", url, exc)
                 return
 
             try:
@@ -66,8 +71,9 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
                     {"$set": product},
                     upsert=True,
                 )
-            except Exception as exc:  # noqa: BLE001
-                logging.exception("Failed to store product %s: %s", url, exc)
+            except PyMongoError as exc:
+                logging.exception("Database error for %s: %s", url, exc)
+
                 return
 
             data = json.dumps(product, ensure_ascii=False, default=str)

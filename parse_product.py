@@ -8,6 +8,8 @@ from bs4 import BeautifulSoup
 
 from utils import fetch_html_with_retries
 from models import Attribute, PriceInfo, Product, Supplier, SupplierOffer
+from errors import ParseError
+
 
 
 
@@ -229,7 +231,10 @@ async def parse(url: str, debug_html_path: str | None = None) -> dict:
         except OSError as exc:
             logging.warning("Failed to save HTML to %s: %s", debug_html_path, exc)
 
-    product = parse_product(html)
+    try:
+        product = parse_product(html)
+    except Exception as exc:
+        raise ParseError(f"Failed to parse {url}") from exc
     logging.info("Parsed product: %s", product.title)
 
     raw = asdict(product)
