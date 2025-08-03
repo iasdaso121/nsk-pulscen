@@ -5,8 +5,11 @@ from playwright.async_api import async_playwright
 
 from typing import Tuple
 
-import aiohttp
 from Crypto.Cipher import AES
+from contextlib import contextmanager
+import os
+import tempfile
+from errors import FetchError
 
 # Substrings that may indicate the site blocked us.
 # The generic word "captcha" was previously used but it also appears in
@@ -49,20 +52,21 @@ async def fetch_html_with_retries(
     allow_redirects: bool = True,
     retries: int = 3,
 ) -> Tuple[str, str]:
+    last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
             logging.info("Fetching %s (attempt %s)", url, attempt)
             return await _fetch_with_playwright(url, allow_redirects=allow_redirects)
         except RuntimeError as exc:
+            last_exc = exc
             logging.warning(
                 "Blocked or captcha detected on attempt %s/%s: %s",
                 attempt,
                 retries,
                 exc,
             )
-            if attempt == retries:
-                raise
         except Exception as exc:
+            last_exc = exc
             logging.warning(
                 "Error fetching %s on attempt %s/%s: %s",
                 url,
@@ -70,6 +74,23 @@ async def fetch_html_with_retries(
                 retries,
                 exc,
             )
-            if attempt == retries:
-                raise
+        if attempt == retries:
+            raise FetchError(f"Failed to fetch {url}") from last_exc
         await asyncio.sleep(2 * attempt)
+
+
+@contextmanager
+def atomic_writer(path: str):
+    """Write to a temporary file and move it into place when done."""
+    directory = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=directory)
+    os.close(fd)
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            yield fh
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except FileNotFoundError:
+            pass

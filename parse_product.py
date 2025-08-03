@@ -1,59 +1,16 @@
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, asdict
-from typing import List, Optional
+from dataclasses import asdict
+from typing import List
 
 from bs4 import BeautifulSoup
 
 from utils import fetch_html_with_retries
+from models import Attribute, PriceInfo, Product, Supplier, SupplierOffer
+from errors import ParseError
 
 
-@dataclass
-class PriceInfo:
-    qnt: int
-    discount: Optional[float]
-    price: float
-
-
-@dataclass
-class SupplierOffer:
-    price: List[PriceInfo]
-    stock: Optional[str]
-    delivery_time: Optional[str]
-    package_info: Optional[str]
-    purchase_url: Optional[str]
-
-
-@dataclass
-class Supplier:
-    dealer_id: Optional[str]
-    supplier_name: Optional[str]
-    supplier_url: Optional[str]
-    supplier_tel: Optional[str]
-    supplier_address: Optional[str]
-    supplier_description: Optional[str]
-    supplier_offers: List[SupplierOffer]
-
-
-@dataclass
-class Attribute:
-    attr_name: str
-    attr_value: str
-
-
-@dataclass
-class Product:
-    title: Optional[str]
-    description: Optional[str]
-    article: Optional[str]
-    brand: Optional[str]
-    country_of_origin: Optional[str]
-    warranty_months: Optional[str]
-    category: Optional[str]
-    created_at: Optional[str]
-    attributes: List[Attribute]
-    suppliers: List[Supplier]
 
 
 async def fetch_html(url: str) -> str:
@@ -274,10 +231,14 @@ async def parse(url: str, debug_html_path: str | None = None) -> dict:
         except OSError as exc:
             logging.warning("Failed to save HTML to %s: %s", debug_html_path, exc)
 
-    product = parse_product(html)
+    try:
+        product = parse_product(html)
+    except Exception as exc:
+        raise ParseError(f"Failed to parse {url}") from exc
     logging.info("Parsed product: %s", product.title)
 
     raw = asdict(product)
+    raw["url"] = url
 
     def fill_defaults(obj):
         """Заменяет None, пустые строки, списки, словари на 'Нет значения'."""

@@ -2,9 +2,11 @@ import argparse
 import asyncio
 import json
 import logging
+from typing import Iterable
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
+from pymongo.errors import PyMongoError
 
 
 @asynccontextmanager
@@ -19,25 +21,23 @@ async def open_mongo(uri: str):
 import parse_categories
 import parse_product_links
 import parse_product
+from utils import atomic_writer
+from errors import FetchError, ParseError
 
 
-async def gather_product_links(category_url: str, concurrency: int = 5) -> list[str]:
+async def gather_product_links(category_url: str) -> list[str]:
     """Collect product URLs from all subcategories of the given category."""
     subcats = await parse_categories.parse(category_url)
     logging.info("Found %s subcategories", len(subcats))
 
-    sem = asyncio.Semaphore(concurrency)
-    all_links: list[str] = []
-
-    async def collect(sub: dict) -> None:
+    links: list[str] = []
+    for sub in subcats:
         url = sub["url"]
-        async with sem:
-            links = await parse_product_links.parse(url)
-            all_links.extend(link["url"] for link in links)
-            logging.info("%s links collected from %s", len(links), url)
+        sub_links = await parse_product_links.parse(url)
+        logging.info("%s links collected from %s", len(sub_links), url)
+        links.extend(link["url"] for link in sub_links)
 
-    await asyncio.gather(*(collect(sc) for sc in subcats))
-    return all_links
+    return links
 
 
 async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, debug_dir: str | None = None) -> None:
@@ -58,14 +58,22 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
 
             try:
                 product = await parse_product.parse(url, debug_html_path=debug_path)
-            except Exception as exc:  # noqa: BLE001
-                logging.exception("Failed to parse %s: %s", url, exc)
+            except FetchError as exc:
+                logging.error("Network error for %s: %s", url, exc)
+                return
+            except ParseError as exc:
+                logging.warning("Parse error for %s: %s", url, exc)
                 return
 
             try:
-                await db.products.insert_one(product)
-            except Exception as exc:  # noqa: BLE001
-                logging.exception("Failed to store product %s: %s", url, exc)
+                await db.products.update_one(
+                    {"_id": product["url"]},
+                    {"$set": product},
+                    upsert=True,
+                )
+            except PyMongoError as exc:
+                logging.exception("Database error for %s: %s", url, exc)
+
                 return
 
             data = json.dumps(product, ensure_ascii=False, default=str)
@@ -77,16 +85,15 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
 
 
 async def main(category_url: str, mongo_uri: str, out_file: str,
-               link_concurrency: int = 5, product_concurrency: int = 10,
-               debug_dir: str | None = None) -> None:
+               product_concurrency: int = 10, debug_dir: str | None = None) -> None:
     """Collect products from the given category and store them."""
     async with open_mongo(mongo_uri) as client:
         db = client.pulscen
 
-        links = await gather_product_links(category_url, concurrency=link_concurrency)
+        links = await gather_product_links(category_url)
         logging.info("Collected %s product links", len(links))
 
-        with open(out_file, "w", encoding="utf-8") as fh:
+        with atomic_writer(out_file) as fh:
             await gather_products(db, links, out_fh=fh, concurrency=product_concurrency, debug_dir=debug_dir)
 
 
@@ -98,8 +105,6 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--mongodb", default="mongodb://localhost:27017",
                         help="MongoDB connection URI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
-    parser.add_argument("--link-concurrency", type=int, default=5,
-                        help="Number of concurrent subcategory parsers")
     parser.add_argument("--product-concurrency", type=int, default=10,
                         help="Number of concurrent product fetchers")
     parser.add_argument("--debug-dir", help="Directory to save raw HTML samples")
@@ -110,7 +115,12 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s:%(message)s",
     )
 
-    asyncio.run(main(args.category_url, args.mongodb, args.out,
-                     link_concurrency=args.link_concurrency,
-                     product_concurrency=args.product_concurrency,
-                     debug_dir=args.debug_dir))
+    asyncio.run(
+        main(
+            args.category_url,
+            args.mongodb,
+            args.out,
+            product_concurrency=args.product_concurrency,
+            debug_dir=args.debug_dir,
+        )
+    )
