@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Error
 
 from typing import Tuple
 
@@ -22,16 +22,38 @@ BLOCK_PATTERNS = [
     "слишком много запросов",
 ]
 
+_playwright = None
+_browser = None
+
+
+async def get_browser():
+    """Return a singleton Chromium browser instance."""
+    global _playwright, _browser
+    if _browser is None:
+        _playwright = await async_playwright().start()
+        _browser = await _playwright.chromium.launch(headless=True)
+    return _browser
+
+
+async def close_browser():
+    """Close the shared browser instance if it was created."""
+    global _playwright, _browser
+    if _browser is not None:
+        await _browser.close()
+        _browser = None
+    if _playwright is not None:
+        await _playwright.stop()
+        _playwright = None
+
 async def _fetch_with_playwright(
     url: str,
     *,
     allow_redirects: bool = True,  # сейчас не используем, тк браузер сам делает редиректы
 ) -> Tuple[str, str]:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
-
+    browser = await get_browser()
+    context = await browser.new_context()
+    page = await context.new_page()
+    try:
         await page.goto(url, wait_until="networkidle")
 
         html = await page.content()
@@ -39,11 +61,11 @@ async def _fetch_with_playwright(
 
         lowered = html.lower()
         if any(pattern in lowered for pattern in BLOCK_PATTERNS):
-            await browser.close()
             raise RuntimeError("Blocked or captcha detected")
 
-        await browser.close()
         return html, final_url
+    finally:
+        await context.close()
 
 
 async def fetch_html_with_retries(
@@ -61,6 +83,15 @@ async def fetch_html_with_retries(
             last_exc = exc
             logging.warning(
                 "Blocked or captcha detected on attempt %s/%s: %s",
+                attempt,
+                retries,
+                exc,
+            )
+        except Error as exc:
+            last_exc = exc
+            logging.warning(
+                "Playwright error fetching %s on attempt %s/%s: %s",
+                url,
                 attempt,
                 retries,
                 exc,

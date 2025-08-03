@@ -6,7 +6,7 @@ from typing import List
 
 from bs4 import BeautifulSoup
 
-from utils import fetch_html_with_retries
+from utils import fetch_html_with_retries, close_browser
 from models import Attribute, PriceInfo, Product, Supplier, SupplierOffer
 from errors import ParseError
 
@@ -60,15 +60,30 @@ def parse_suppliers(soup: BeautifulSoup) -> List[Supplier]:
         for offer_block in s.select('.supplier__offer'):
             price_list: List[PriceInfo] = []
             for price_row in offer_block.select('.price-row'):
-                qnt = price_row.get('data-quantity')
-                price = price_row.get('data-price')
-                disc = price_row.get('data-discount')
-                if price:
+                qnt_raw = price_row.get('data-quantity')
+                price_raw = price_row.get('data-price')
+                disc_raw = price_row.get('data-discount')
+                try:
+                    price_val = float(price_raw) if price_raw is not None else None
+                except ValueError:
+                    logging.warning("Invalid price '%s' for dealer %s", price_raw, dealer_id)
+                    continue
+                try:
+                    qnt_val = int(qnt_raw) if qnt_raw else 1
+                except ValueError:
+                    logging.warning("Invalid quantity '%s' for dealer %s", qnt_raw, dealer_id)
+                    qnt_val = 1
+                try:
+                    disc_val = float(disc_raw) if disc_raw else None
+                except ValueError:
+                    logging.warning("Invalid discount '%s' for dealer %s", disc_raw, dealer_id)
+                    disc_val = None
+                if price_val is not None:
                     price_list.append(
                         PriceInfo(
-                            qnt=int(qnt) if qnt else 1,
-                            discount=float(disc) if disc else None,
-                            price=float(price),
+                            qnt=qnt_val,
+                            discount=disc_val,
+                            price=price_val,
                         )
                     )
             offers.append(
@@ -267,5 +282,9 @@ if __name__ == '__main__':
         format='%(asctime)s %(levelname)s:%(message)s',
     )
 
-    data = asyncio.run(parse(args.url, debug_html_path=args.save_html))
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    async def _main():
+        data = await parse(args.url, debug_html_path=args.save_html)
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        await close_browser()
+
+    asyncio.run(_main())

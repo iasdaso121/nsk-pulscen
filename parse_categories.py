@@ -6,7 +6,7 @@ from typing import List
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
-from utils import fetch_html_with_retries
+from utils import fetch_html_with_retries, close_browser
 
 
 @dataclass
@@ -57,5 +57,9 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s:%(message)s",
     )
 
-    data = asyncio.run(parse(args.url))
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    async def _main():
+        data = await parse(args.url)
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        await close_browser()
+
+    asyncio.run(_main())

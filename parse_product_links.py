@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from utils import fetch_html_with_retries
+from utils import fetch_html_with_retries, close_browser
 
 
 @dataclass
@@ -26,7 +26,7 @@ def parse_links(html: str, base_url: str) -> List[ProductLink]:
     for container in soup.select('.product-listing__product-title a'):
         href = container.get("href")
         title = container.get_text(strip=True)
-        if href:
+        if href and title:
             links.append(ProductLink(title=title, url=urljoin(base_url, href)))
     return links
 
@@ -82,5 +82,9 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s:%(message)s",
     )
 
-    data = asyncio.run(parse(args.url))
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    async def _main():
+        data = await parse(args.url)
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        await close_browser()
+
+    asyncio.run(_main())
