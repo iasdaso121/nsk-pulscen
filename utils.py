@@ -19,26 +19,6 @@ BLOCK_PATTERNS = [
     "слишком много запросов",
 ]
 
-def _solve_rbpcs_cookie(html: str) -> str | None:
-    """Extract and decrypt RBPCS cookie from anti-bot page."""
-    m = re.search(
-        r'a=toNumbers\("([0-9a-f]+)"\).*?'
-        r'b=toNumbers\("([0-9a-f]+)"\).*?'
-        r'c=toNumbers\("([0-9a-f]+)"\)',
-        html,
-        re.I | re.S,
-    )
-    if not m:
-        return None
-    try:
-        key, iv, data = (bytes.fromhex(x) for x in m.groups())
-        cipher = AES.new(key, AES.MODE_CBC, iv)
-        return cipher.decrypt(data).hex()
-    except Exception as exc:  # pragma: no cover - crypto errors unexpected
-        logging.warning("Failed to decrypt RBPCS cookie: %s", exc)
-        return None
-
-
 async def _fetch_with_playwright(
     url: str,
     *,
@@ -49,7 +29,7 @@ async def _fetch_with_playwright(
         context = await browser.new_context()
         page = await context.new_page()
 
-        response = await page.goto(url, wait_until="networkidle")
+        await page.goto(url, wait_until="networkidle")
 
         html = await page.content()
         final_url = page.url
