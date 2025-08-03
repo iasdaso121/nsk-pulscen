@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import json
 import logging
-from typing import Iterable
+import os
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
@@ -21,7 +21,7 @@ async def open_mongo(uri: str):
 import parse_categories
 import parse_product_links
 import parse_product
-from utils import atomic_writer
+from utils import atomic_writer, close_browser
 from errors import FetchError, ParseError
 
 
@@ -44,17 +44,15 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
     """Parse product pages and store them in MongoDB and JSONL file on the fly."""
     sem = asyncio.Semaphore(concurrency)
     write_lock = asyncio.Lock()
-    html_saved = False
+    html_saved = asyncio.Event()
 
     async def parse_and_store(url: str) -> None:
-        nonlocal html_saved
         async with sem:
             debug_path = None
-            if debug_dir and not html_saved:
-                import os
+            if debug_dir and not html_saved.is_set():
                 os.makedirs(debug_dir, exist_ok=True)
                 debug_path = os.path.join(debug_dir, "sample.html")
-                html_saved = True
+                html_saved.set()
 
             try:
                 product = await parse_product.parse(url, debug_html_path=debug_path)
@@ -65,21 +63,26 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
                 logging.warning("Parse error for %s: %s", url, exc)
                 return
 
-            try:
-                await db.products.update_one(
-                    {"_id": product["url"]},
-                    {"$set": product},
-                    upsert=True,
-                )
-            except PyMongoError as exc:
-                logging.exception("Database error for %s: %s", url, exc)
-
-                return
+            for attempt in range(3):
+                try:
+                    await db.products.update_one(
+                        {"_id": product["url"]},
+                        {"$set": product},
+                        upsert=True,
+                    )
+                    break
+                except PyMongoError as exc:
+                    if attempt == 2:
+                        logging.exception("Database error for %s: %s", url, exc)
+                        return
+                    await asyncio.sleep(2 * (attempt + 1))
 
             data = json.dumps(product, ensure_ascii=False, default=str)
             async with write_lock:
                 out_fh.write(data + "\n")
-            logging.info("Stored product %s", product.get("title"))
+                out_fh.flush()
+                os.fsync(out_fh.fileno())
+            logging.info("Stored product %s from %s", product.get("title"), url)
 
     await asyncio.gather(*(parse_and_store(u) for u in urls))
 
@@ -87,14 +90,17 @@ async def gather_products(db, urls: list[str], out_fh, concurrency: int = 10, de
 async def main(category_url: str, mongo_uri: str, out_file: str,
                product_concurrency: int = 10, debug_dir: str | None = None) -> None:
     """Collect products from the given category and store them."""
-    async with open_mongo(mongo_uri) as client:
-        db = client.pulscen
+    try:
+        async with open_mongo(mongo_uri) as client:
+            db = client.pulscen
 
-        links = await gather_product_links(category_url)
-        logging.info("Collected %s product links", len(links))
+            links = await gather_product_links(category_url)
+            logging.info("Collected %s product links", len(links))
 
-        with atomic_writer(out_file) as fh:
-            await gather_products(db, links, out_fh=fh, concurrency=product_concurrency, debug_dir=debug_dir)
+            with atomic_writer(out_file) as fh:
+                await gather_products(db, links, out_fh=fh, concurrency=product_concurrency, debug_dir=debug_dir)
+    finally:
+        await close_browser()
 
 
 if __name__ == "__main__":
@@ -102,7 +108,7 @@ if __name__ == "__main__":
     parser.add_argument("category_url", help="URL of the parent category")
     parser.add_argument("-o", "--out", default="products.jsonl",
                         help="Path to output JSONL file")
-    parser.add_argument("-m", "--mongodb", default="mongodb://localhost:27017",
+    parser.add_argument("-m", "--mongodb", default=os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
                         help="MongoDB connection URI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     parser.add_argument("--product-concurrency", type=int, default=10,
